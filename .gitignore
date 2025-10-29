@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+env/
+venv/
+
+# OS & IDE
+.DS_Store
+.vscode/
+.idea/
+
+# Logs & cache
+*.log
+.cache/
+dist/
+build/
+
+# Local data
+*.sqlite
+*.db
+
+# Env & secrets
+.env
+.env.*.local
+
+# Misc
+*.zip
