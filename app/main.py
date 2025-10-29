@@ -1,7 +1,8 @@
-from fastapi import FastAPI
-from app.notion import notion_health, debug_flashcards, add_study_session, get_random_flashcard 
+from fastapi import FastAPI, Request, Query
+from app.notion import notion_health, debug_flashcards, add_study_session, get_random_flashcard, update_flashcard_stats
 from datetime import datetime
 import random
+from typing import Optional
 
 app = FastAPI(title="Notion Language Lab")
 
@@ -32,6 +33,25 @@ def stop_timer():
     return {"status": "stopped", "end_time": end_time}
 
 @app.get("/flashcards/random")
-def random_flashcard():
-    card = get_random_flashcard()
-    return {"front": card["Front"], "back": card["Back"]}
+def random_flashcard(request: Request, language: Optional[str] = Query(None, description="Language filter")):
+    card = get_random_flashcard(language=language)
+    
+    print("DEBUG endpoint card:", card, flush=True)
+
+    if "error" in card:
+        return card  
+    
+    return {
+    "Front": card["Front"],
+    "Back": card["Back"],
+    "id": card["id"]
+}
+
+@app.post("/flashcards/update")
+def update_flashcard(id: str = Query(...), success: bool = Query(...)):
+    result = update_flashcard_stats(id, success)
+    return result
+
+# Run the app
+# uvicorn app.main:app --reload --port 8000 
+# ngrok http 8000 (dans un autre terminal)

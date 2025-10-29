@@ -4,6 +4,7 @@ from app.config import NOTION_TOKEN, DB_FLASHCARDS, DB_SESSIONS
 from typing import Dict, Any
 import random
 from datetime import datetime, timezone
+import sys
 
 
 notion = Client(
@@ -160,45 +161,109 @@ def add_study_session(start_time: str = None, end_time: str = None) -> dict:
 
     
 
-def get_random_flashcard() -> dict:
+def get_random_flashcard(language: str | None = None) -> dict:
     """
-    Fetch one random flashcard from the Notion 'Flashcards' database.
-    Returns a dict with 'Front' and 'Back' text fields.
+    Fetch one random flashcard from the Notion 'Flashcards' database,
+    update Leitner Number and Repetition, and return the card content.
     """
     try:
-        # Get data source for Flashcards DB
         db_meta = notion.databases.retrieve(DB_FLASHCARDS)
         data_source_id = db_meta["data_sources"][0]["id"]
 
-        # Query a batch of flashcards (you can adjust page_size if your DB is large)
+        # --- Build query ---
+        body = {"page_size": 100}
+        if language:
+            body["filter"] = {
+                "property": "Language",
+                "select": {"equals": language}
+            }
+
+        # --- Query flashcards ---
         res = notion.request(
             path=f"/data_sources/{data_source_id}/query",
             method="POST",
-            body={"page_size": 20}
+            body=body
         )
-
         pages = res.get("results", [])
         if not pages:
             return {"error": "No flashcards found"}
+        
+        # --- Compute weights based on Leitner Number ---
+        weights = []
+        for page in pages:
+            props = page.get("properties", {})
+            leitner_value = props.get("Leitner Number", {}).get("number")
 
-        # Pick one at random
-        card = random.choice(pages)
+            # Défaut : 1 si manquant ou invalide
+            if not isinstance(leitner_value, (int, float)):
+                leitner_value = 1
+
+            weights.append(1 / max(1, leitner_value))
+
+
+        # --- Ponderated draw ---
+        card = random.choices(pages, weights=weights, k=1)[0]
         props = card.get("properties", {})
+        page_id = card.get("id")
 
-        print(props)
 
-        front = ""
-        back = ""
+        # --- Extract values ---
+        front = props.get("Front", {}).get("title", [{}])[0].get("text", {}).get("content", "")
+        back = props.get("Back", {}).get("rich_text", [{}])[0].get("text", {}).get("content", "")
 
-        # Extract 'Front' (title)
-        if "Front" in props and props["Front"].get("title"):
-            front = props["Front"]["title"][0]["text"]["content"]
 
-        # Extract 'Back' (rich_text)
-        if "Back" in props and props["Back"].get("rich_text"):
-            back = props["Back"]["rich_text"][0]["text"]["content"]
-
-        return {"Front": front, "Back": back}
+        # --- Return updated flashcard ---
+        return {
+            "Front": front,
+            "Back": back,
+            "id": page_id
+        }
 
     except Exception as e:
+        print("ERROR:", e, file=sys.stderr, flush=True)
         return {"error": str(e)}
+    
+
+def update_flashcard_stats(page_id: str, success: bool) -> dict:
+    try:
+        # Take the complete page
+        page = notion.pages.retrieve(page_id)
+        props = page.get("properties", {})
+
+        # Take current values
+        leitner_value = props.get("Leitner Number", {}).get("number") or 1
+        repetition_value = props.get("Repetition", {}).get("number") or 0
+
+        # Adapt to new values
+        if success:
+            new_leitner = min(5, leitner_value + 1)
+        else:
+            new_leitner = 1  # reset to 1
+
+        new_repetition = repetition_value + 1
+
+        print(f"Updating {page_id}: Leitner={leitner_value}→{new_leitner}, "
+              f"Repetition={repetition_value}→{new_repetition}", flush=True)
+
+        # Update Notion
+        update_res = notion.pages.update(
+            page_id=page_id,
+            properties={
+                "Leitner Number": {"number": new_leitner},
+                "Repetition": {"number": new_repetition}
+            }
+        )
+
+        print("Update result:", update_res, flush=True)
+
+        return {
+            "status": "ok",
+            "updated": True,
+            "Leitner Number": new_leitner,
+            "Repetition": new_repetition
+        }
+
+    except Exception as e:
+        print("Error updating flashcard:", e, flush=True)
+        return {"error": str(e)}
+
