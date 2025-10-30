@@ -194,7 +194,7 @@ def get_random_flashcard(language: str | None = None) -> dict:
             props = page.get("properties", {})
             leitner_value = props.get("Leitner Number", {}).get("number")
 
-            # Défaut : 1 si manquant ou invalide
+            # Défaut : 1 if missing or invalid
             if not isinstance(leitner_value, (int, float)):
                 leitner_value = 1
 
@@ -240,7 +240,11 @@ def update_flashcard_stats(page_id: str, success: bool) -> dict:
         else:
             new_leitner = 1  # reset to 1
 
+        # Update frequency
         new_repetition = repetition_value + 1
+
+        # Update date studied
+        current_date = datetime.now(timezone.utc).isoformat()
 
         print(f"Updating {page_id}: Leitner={leitner_value}→{new_leitner}, "
               f"Repetition={repetition_value}→{new_repetition}", flush=True)
@@ -250,7 +254,8 @@ def update_flashcard_stats(page_id: str, success: bool) -> dict:
             page_id=page_id,
             properties={
                 "Leitner Number": {"number": new_leitner},
-                "Repetition": {"number": new_repetition}
+                "Repetition": {"number": new_repetition},
+                "Last Revision": {"date": {"start": current_date}}
             }
         )
 
@@ -260,7 +265,8 @@ def update_flashcard_stats(page_id: str, success: bool) -> dict:
             "status": "ok",
             "updated": True,
             "Leitner Number": new_leitner,
-            "Repetition": new_repetition
+            "Repetition": new_repetition,
+            "Last Revision": current_date
         }
 
     except Exception as e:
