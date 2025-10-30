@@ -161,9 +161,9 @@ def add_study_session(start_time: str = None, end_time: str = None) -> dict:
 
     
 
-def get_random_flashcard(language: str | None = None) -> dict:
+def get_flashcard(language: str | None = None) -> dict:
     """
-    Fetch one random flashcard from the Notion 'Flashcards' database,
+    Fetch one flashcard from the Notion 'Flashcards' database,
     update Leitner Number and Repetition, and return the card content.
     """
     try:
@@ -273,3 +273,42 @@ def update_flashcard_stats(page_id: str, success: bool) -> dict:
         print("Error updating flashcard:", e, flush=True)
         return {"error": str(e)}
 
+
+def create_flashcard(Front: str, Back: str, Language: str) -> dict:
+    try:
+        data_source_id = _get_data_source_id(DB_FLASHCARDS)
+        current_date = datetime.now(timezone.utc).isoformat()
+
+        payload = {
+            "parent": {"type": "data_source_id", "data_source_id": data_source_id},
+            "properties": {
+                "Front": {
+                    "title": [
+                        {"type": "text", "text": {"content": Front}}
+                    ]
+                },
+                "Back": {
+                    "rich_text": [
+                        {"type": "text", "text": {"content": Back}}
+                    ]
+                },
+                "Language": {"select": {"name": Language}},
+                "Deck": {"select": {"name": "Vocabulary"}},
+                "Leitner Number": {"number": 1},
+                "Repetition": {"number": 0},
+                "Last Revision": {"date": {"start": current_date}}
+            }
+        }
+
+        notion.pages.create(**payload)
+        return {
+            "ok": True,
+            "Front": Front,
+            "Back": Back,
+            "Language": Language,
+            "Last Revision": current_date
+        }
+
+    except Exception as e:
+        print("Error creating flashcard:", e, flush=True)
+        return {"error": str(e)}
